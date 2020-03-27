@@ -6,15 +6,11 @@
 
 // thread block size
 #define BLOCKDIM 16
-#define N 100
+#define N 5000
 
 // threshold
 #define TOLERANCE 0.01
-
 float absf(float n);
-
-const float val1 = 4.0f;
-const float val2 = 2.0f;
 
 __global__ void MatAdd(float *a, float *b, float *c) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -77,35 +73,36 @@ int main() {
 
 	// KERNEL INVOCATION
 	// each thread produces 1 output matrix element
-	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
-	dim3 numBlocks((int)ceil(N / threadsPerBlock.x), (int)ceil(N / threadsPerBlock.y));
-	MatAdd<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
-
 	/*dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
-	dim3 numBlocks((int)ceil(N / threadsPerBlock.x), 1);
-	MatAddRow<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
+	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
+	MatAdd<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);*/
+
+	/*
+	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
+	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), 1);
+	MatAddRow<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);*/
 
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
-	dim3 numBlocks(1, (int)ceil(N / threadsPerBlock.y));
-	MatAddCol<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);*/
+	dim3 numBlocks(1, (int)ceil(N / (float)threadsPerBlock.y));
+	MatAddCol<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
 
 	// copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
 
 	int good = 1;
 	int i, j;
-	printf("Array C = \n");
+	//printf("Array C = \n");
 	for (i = 0; i < N; i++) {
 		for (j = 0; j < N; j++) {
 			int index = i + j * N;
 			float val = (*C)[index];
-			printf("%f ", val);
+			//printf("%f ", val);
 			float diff = (*A)[index] + (*B)[index] - val;
 			if (absf(diff) > TOLERANCE) {
 				good = 0;
 			}
 		}
-		printf("\n");
+		//printf("\n");
 	}
 
 	if (good == 1) {
@@ -116,6 +113,8 @@ int main() {
 	cudaFree(pA);
 	cudaFree(pB);
 	cudaFree(pC);
+
+	getc(stdin);
 
 	return 0;
 }
