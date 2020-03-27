@@ -6,7 +6,7 @@
 
 // thread block size
 #define BLOCKDIM 16
-#define N 3
+#define N 100
 
 // threshold
 #define TOLERANCE 0.01
@@ -21,8 +21,10 @@ __global__ void MatMult(float *a, float *b, float *c) {
 	for (int k = 0; k < N; k++) {
 		int a_index = i + k * N;
 		int b_index = k + j * N;
-		total += a[a_index] * b[b_index];
-		c[index] += a[a_index] * b[b_index];
+		if (i < N && j < N) {
+			total += a[a_index] * b[b_index];
+			c[index] += a[a_index] * b[b_index];
+		}
 	}
 	//printf("%d %d %f\n", i, j, total);
 }
@@ -67,7 +69,7 @@ int main() {
 	// copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
 
-	printf("Array A = \n");
+	/*printf("Array A = \n");
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
 			int index = i + j * N;
@@ -83,22 +85,37 @@ int main() {
 			printf("%f ", (*B)[index]);
 		}
 		printf("\n");
+	} */
+
+	myMat *CTemp;
+	CTemp = (myMat*)malloc(dsize);
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			int index = i + j * N;
+			(*CTemp)[index] = 0.0;
+			for (int k = 0; k < N; k++) {
+				int a_index = i + k * N;
+				int b_index = k + j * N;
+				(*CTemp)[index] += (*A)[a_index] * (*B)[b_index];
+			}
+		}
 	}
 
 	int good = 1;
 	int i, j;
-	printf("Array C = \n");
+	//printf("Array C = \n");
 	for (i = 0; i < N; i++) {
 		for (j = 0; j < N; j++) {
 			int index = i + j * N;
 			float val = (*C)[index];
-			printf("%f ", val);
-			float diff = (*A)[index] + (*B)[index] - val;
+			//printf("%f ", val);
+			float diff = (*CTemp)[index] - val;
 			if (absf(diff) > TOLERANCE) {
+				printf("%d %d %f %f %f\n", i, j, val, (*CTemp)[index], diff);
 				good = 0;
 			}
 		}
-		printf("\n");
+		//printf("\n");
 	}
 
 	if (good == 1) {
