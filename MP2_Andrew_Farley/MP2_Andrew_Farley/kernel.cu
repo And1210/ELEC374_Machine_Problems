@@ -8,6 +8,11 @@
 #define BLOCKDIM 16
 #define N 100
 
+// threshold
+#define TOLERANCE 0.01
+
+float absf(float n);
+
 const float val1 = 4.0f;
 const float val2 = 2.0f;
 
@@ -51,21 +56,17 @@ int main() {
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
 			int index = i + j * N;
-			(*A)[index] = val1;
-			(*B)[index] = val2;
+			(*A)[index] = 100 * (float)rand() / (float)RAND_MAX;
+			(*B)[index] = 100 * (float)rand() / (float)RAND_MAX;
 			(*C)[index] = 0.0f;
 		}
 	}
 
 	float *pA, *pB, *pC;
 
-	printf("cudaMalloc\n");
 	// allocate matrices in device memory
-	printf("First\n");
 	cudaMalloc((void**)&pA, (N*N)*sizeof(float));
-	printf("Second\n");
 	cudaMalloc((void**)&pB, (N*N)*sizeof(float));
-	printf("Third\n");
 	cudaMalloc((void**)&pC, (N*N)*sizeof(float));
 
 	printf("cudaMemcpy\n");
@@ -80,17 +81,35 @@ int main() {
 	dim3 numBlocks((int)ceil(N / threadsPerBlock.x), (int)ceil(N / threadsPerBlock.y));
 	MatAdd<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
 
+	/*dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
+	dim3 numBlocks((int)ceil(N / threadsPerBlock.x), 1);
+	MatAddRow<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
+
+	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
+	dim3 numBlocks(1, (int)ceil(N / threadsPerBlock.y));
+	MatAddCol<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);*/
+
 	// copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
 
+	int good = 1;
 	int i, j;
 	printf("Array C = \n");
 	for (i = 0; i < N; i++) {
 		for (j = 0; j < N; j++) {
 			int index = i + j * N;
-			printf("%f ", C[index]);
+			float val = (*C)[index];
+			printf("%f ", val);
+			float diff = (*A)[index] + (*B)[index] - val;
+			if (absf(diff) > TOLERANCE) {
+				good = 0;
+			}
 		}
 		printf("\n");
+	}
+
+	if (good == 1) {
+		printf("TEST PASSED\n");
 	}
 
 	// free device memory
@@ -99,4 +118,10 @@ int main() {
 	cudaFree(pC);
 
 	return 0;
+}
+
+float absf(float n) {
+	if (n < 0)
+		return -n;
+	return n;
 }
