@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 // thread block size
 #define BLOCKDIM 16
@@ -49,15 +50,24 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N, void(*addHandler)(float*,
 size_t dsize;
 
 int main() {
-	int N = 3;
 	myMat *A, *B, *C;
-	dsize = N*N*sizeof(float);
-	A = (myMat*)malloc(dsize);
-	B = (myMat*)malloc(dsize);
-	C = (myMat*)malloc(dsize);
 
-	printf("N = %d\n", N);
-	HostFunction(A, B, C, N, MatAddHelper);
+	int Nsizes[5] = { 100, 200, 500, 1500, 5000 };
+	for (int i = 0; i < 5; i++) {
+		int N = Nsizes[i];
+		dsize = N*N*sizeof(float);
+		A = (myMat*)malloc(dsize);
+		B = (myMat*)malloc(dsize);
+		C = (myMat*)malloc(dsize);
+		printf("N = %d\n", N);
+		printf("SINGLE ELEMENT: \n");
+		HostFunction(A, B, C, N, MatAddHelper);
+		printf("ROW: \n");
+		HostFunction(A, B, C, N, MatAddRowHelper);
+		printf("COLUMN: \n");
+		HostFunction(A, B, C, N, MatAddColHelper);
+		printf("\n");
+	}
 
 	getc(stdin);
 
@@ -89,7 +99,18 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N, void (*addHandler)(float*
 	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 
 	//KERNEL CALL
+	float time = 0;
+	cudaEvent_t start, end;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	addHandler(pA, pB, pC, N);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("Kernal function time: %f\n", time);
 
 	//Copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
