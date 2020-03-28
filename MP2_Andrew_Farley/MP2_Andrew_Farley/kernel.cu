@@ -6,22 +6,21 @@
 
 // thread block size
 #define BLOCKDIM 16
-#define N 100
 
 // threshold
 #define TOLERANCE 0.01
 float absf(float n);
 
-__global__ void MatAdd(float *a, float *b, float *c) {
+__global__ void MatAdd(float *a, float *b, float *c, int N) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	int index = i + j * N;
 	if (i < N && j < N)
 		c[index] = a[index] + b[index];
 }
-void MatAddHelper(float* pA, float* pB, float* pC);
+void MatAddHelper(float* pA, float* pB, float* pC, int N);
 
-__global__ void MatAddRow(float *a, float *b, float *c) {
+__global__ void MatAddRow(float *a, float *b, float *c, int N) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
 	for (int j = 0; j < N; j++) {
@@ -30,9 +29,9 @@ __global__ void MatAddRow(float *a, float *b, float *c) {
 			c[index] = a[index] + b[index];
 	}
 }
-void MatAddRowHelper(float* pA, float* pB, float* pC);
+void MatAddRowHelper(float* pA, float* pB, float* pC, int N);
 
-__global__ void MatAddCol(float *a, float *b, float *c) {
+__global__ void MatAddCol(float *a, float *b, float *c, int N) {
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 
 	for (int i = 0; i < N; i++) {
@@ -41,15 +40,16 @@ __global__ void MatAddCol(float *a, float *b, float *c) {
 			c[index] = a[index] + b[index];
 	}
 }
-void MatAddColHelper(float* pA, float* pB, float* pC);
+void MatAddColHelper(float* pA, float* pB, float* pC, int N);
 
-typedef float myMat[N*N];
+typedef float myMat[];
 
-void HostFunction(myMat* A, myMat* B, myMat* C, void(*addHandler)(float*, float*, float*));
+void HostFunction(myMat* A, myMat* B, myMat* C, int N, void(*addHandler)(float*, float*, float*, int));
 
 size_t dsize;
 
 int main() {
+	int N = 3;
 	myMat *A, *B, *C;
 	dsize = N*N*sizeof(float);
 	A = (myMat*)malloc(dsize);
@@ -57,14 +57,14 @@ int main() {
 	C = (myMat*)malloc(dsize);
 
 	printf("N = %d\n", N);
-	HostFunction(A, B, C, MatAddHelper);
+	HostFunction(A, B, C, N, MatAddHelper);
 
 	getc(stdin);
 
 	return 0;
 }
 
-void HostFunction(myMat* A, myMat* B, myMat* C, void (*addHandler)(float*, float*, float*)) {
+void HostFunction(myMat* A, myMat* B, myMat* C, int N, void (*addHandler)(float*, float*, float*, int)) {
 	//Initialize matricies
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
@@ -89,7 +89,7 @@ void HostFunction(myMat* A, myMat* B, myMat* C, void (*addHandler)(float*, float
 	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 
 	//KERNEL CALL
-	addHandler(pA, pB, pC);
+	addHandler(pA, pB, pC, N);
 
 	//Copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
@@ -129,22 +129,22 @@ void HostFunction(myMat* A, myMat* B, myMat* C, void (*addHandler)(float*, float
 	cudaFree(pC);
 }
 
-void MatAddHelper(float* pA, float* pB, float* pC) {
+void MatAddHelper(float* pA, float* pB, float* pC, int N) {
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
 	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
-	MatAdd<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
+	MatAdd<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 }
 
-void MatAddRowHelper(float* pA, float* pB, float* pC) {
+void MatAddRowHelper(float* pA, float* pB, float* pC, int N) {
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
 	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), 1);
-	MatAddRow<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
+	MatAddRow<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 }
 
-void MatAddColHelper(float* pA, float* pB, float* pC) {
+void MatAddColHelper(float* pA, float* pB, float* pC, int N) {
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
 	dim3 numBlocks(1, (int)ceil(N / (float)threadsPerBlock.y));
-	MatAddCol<<<numBlocks, threadsPerBlock>>>(pA, pB, pC);
+	MatAddCol<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 }
 
 float absf(float n) {
