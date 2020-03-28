@@ -6,13 +6,12 @@
 
 // thread block size
 #define BLOCKDIM 16
-#define N 100
 
 // threshold
 #define TOLERANCE 0.01
 float absf(float n);
 
-__global__ void MatMult(float *a, float *b, float *c) {
+__global__ void MatMult(float *a, float *b, float *c, int N) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -27,27 +26,28 @@ __global__ void MatMult(float *a, float *b, float *c) {
 	//printf("%d %d %f\n", i, j, total);
 }
 
-typedef float myMat[N*N];
+typedef float myMat[];
 
-void HostFunction(myMat* A, myMat* B, myMat* C);
+void HostFunction(myMat* A, myMat* B, myMat* C, int N);
 
 size_t dsize;
 
 int main() {
+	int N = 100;
 	myMat *A, *B, *C;
 	dsize = N*N*sizeof(float);
 	A = (myMat*)malloc(dsize);
 	B = (myMat*)malloc(dsize);
 	C = (myMat*)malloc(dsize);
 
-	HostFunction(A, B, C);
+	HostFunction(A, B, C, N);
 
 	getc(stdin);
 
 	return 0;
 }
 
-void HostFunction(myMat* A, myMat* B, myMat* C) {
+void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	//Initialize matricies
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
@@ -75,7 +75,7 @@ void HostFunction(myMat* A, myMat* B, myMat* C) {
 	//Each thread produces 1 output matrix element
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
 	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
-	MatMult << <numBlocks, threadsPerBlock >> >(pA, pB, pC);
+	MatMult<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 
 	//Copy result from device memory to host memory
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
