@@ -33,14 +33,22 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N);
 size_t dsize;
 
 int main() {
-	int N = 100;
-	myMat *A, *B, *C;
-	dsize = N*N*sizeof(float);
-	A = (myMat*)malloc(dsize);
-	B = (myMat*)malloc(dsize);
-	C = (myMat*)malloc(dsize);
+	myMat *A, *B, *C;					
 
-	HostFunction(A, B, C, N);
+	int Nsizes[5] = { 100, 200, 500, 1500, 5000 };
+	for (int i = 0; i < 5; i++) {
+		int N = Nsizes[i];
+		dsize = N*N*sizeof(float);
+		A = (myMat*)malloc(dsize);
+		B = (myMat*)malloc(dsize);
+		C = (myMat*)malloc(dsize);
+		printf("N = %d\n", N);
+		HostFunction(A, B, C, N);
+		printf("\n");
+		free(A);
+		free(B);
+		free(C);
+	}
 
 	getc(stdin);
 
@@ -66,10 +74,35 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	cudaMalloc((void**)&pB, (N*N)*sizeof(float));
 	cudaMalloc((void**)&pC, (N*N)*sizeof(float));
 
+	/*
+	float time = 0;
+	cudaEvent_t start, end;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
+	addHandler(pA, pB, pC, N);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("Kernal function time: %f\n", time);*/
+
 	//Copy matrices from host memory to device memory
+	float time = 0;
+	cudaEvent_t start, end;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	cudaMemcpy(pA, A, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(pB, B, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("Transfer to device time: %f\n", time);
 
 	//KERNEL CALL
 	//Each thread produces 1 output matrix element
@@ -78,7 +111,18 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	MatMult<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 
 	//Copy result from device memory to host memory
+	time = 0;
+	cudaEvent_t start, end;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("Transfer to host time: %f\n", time);
 
 	//Compute matrix multiplication using the CPU
 	myMat *CTemp;

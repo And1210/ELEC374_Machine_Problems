@@ -67,6 +67,9 @@ int main() {
 		printf("COLUMN: \n");
 		HostFunction(A, B, C, N, MatAddColHelper);
 		printf("\n");
+		free(A);
+		free(B);
+		free(C);
 	}
 
 	getc(stdin);
