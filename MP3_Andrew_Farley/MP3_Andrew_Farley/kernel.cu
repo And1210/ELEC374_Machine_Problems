@@ -106,13 +106,22 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 
 	//KERNEL CALL
 	//Each thread produces 1 output matrix element
+	time = 0;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
 	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
 	MatMult<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("Kernal function time: %f\n", time);
 
 	//Copy result from device memory to host memory
 	time = 0;
-	cudaEvent_t start, end;
 	cudaEventCreate(&start);
 	cudaEventCreate(&end);
 	cudaEventRecord(start);
@@ -127,6 +136,10 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	//Compute matrix multiplication using the CPU
 	myMat *CTemp;
 	CTemp = (myMat*)malloc(dsize);
+	time = 0;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
 			int index = i + j * N;
@@ -138,6 +151,12 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 			}
 		}
 	}
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("CPU execution time: %f\n", time);
 
 	//Compare GPU computed multiplication to CPU
 	int good = 1;
