@@ -1,28 +1,41 @@
+
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <cuda.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
 // thread block size
 #define BLOCKDIM 16
+#define TILE_WIDTH 2
 
 // threshold
 #define TOLERANCE 0.01
 float absf(float n);
 
 __global__ void MatMult(float *a, float *b, float *c, int N, int tileWidth) {
+	__shared__ float Mds[TILE_WIDTH][TILE_WIDTH];
+	__shared__ float Nds[TILE_WIDTH][TILE_WIDTH];
+
 	int i = blockIdx.x * tileWidth + threadIdx.x;
 	int j = blockIdx.y * tileWidth + threadIdx.y;
 
 	int index = i + j * N;
-	for (int k = 0; k < N; k++) {
-		int a_index = i + k * N;
-		int b_index = k + j * N;
+	float PValue = 0;
+	for (int k = 0; k < N/tileWidth; ++k) {
 		if (i < N && j < N) {
-			c[index] += a[a_index] * b[b_index];
+			Mds[threadIdx.y][threadIdx.x] = a[j*N + (k*tileWidth + threadIdx.x)];
+			Nds[threadIdx.y][threadIdx.x] = b[i + (k*tileWidth + threadIdx.y)*N];
+			__syncthreads();
+
+			for (int m = 0; m < TILE_WIDTH; m++) {
+				PValue += Mds[threadIdx.y][m] * Nds[m][threadIdx.x];
+				__syncthreads();
+			}
 		}
 	}
+	c[index] = PValue;
 	//printf("%d %d %f\n", i, j, total);
 }
 
@@ -38,25 +51,23 @@ int main() {
 	int tileWidths[5] = { 2, 4, 10, 20, 25 };
 	int Nsizes[5] = { 100, 200, 500, 1500, 5000 };
 
-	for (int j = 0; j < 5; j++) {
-		int tileWidth = tileWidths[j];
-		printf("Tile Width = %d:\n", tileWidth);
-		for (int i = 0; i < 4; i++) {
-			int N = Nsizes[i];
-			dsize = N*N*sizeof(float);
-			A = (myMat*)malloc(dsize);
-			B = (myMat*)malloc(dsize);
-			C = (myMat*)malloc(dsize);
-			printf("N = %d\n", N);
-			HostFunction(A, B, C, N, tileWidth);
-			printf("\n");
-
-			free(A);
-			free(B);
-			free(C);
-		}
+	int tileWidth = TILE_WIDTH;
+	printf("Tile Width = %d:\n", tileWidth);
+	for (int i = 0; i < 4; i++) {
+		int N = Nsizes[i];
+		dsize = N*N*sizeof(float);
+		A = (myMat*)malloc(dsize);
+		B = (myMat*)malloc(dsize);
+		C = (myMat*)malloc(dsize);
+		printf("N = %d\n", N);
+		HostFunction(A, B, C, N, tileWidth);
 		printf("\n");
+
+		free(A);
+		free(B);
+		free(C);
 	}
+	printf("\n");
 
 	//5000 matricies, they take foreverrrr
 	for (int j = 0; j < 5; j++) {
@@ -118,39 +129,29 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N, int tileWidth) {
 	printf("Kernal function time: %f\n", time);*/
 
 	//Copy matrices from host memory to device memory
+	cudaMemcpy(pA, A, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(pB, B, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
+
+	//KERNEL CALL
+	//Each thread produces 1 output matrix element
 	float time = 0;
 	cudaEvent_t start, end;
 	cudaEventCreate(&start);
 	cudaEventCreate(&end);
 	cudaEventRecord(start);
-	cudaMemcpy(pA, A, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(pB, B, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
+	dim3 threadsPerBlock(tileWidth, tileWidth);
+	dim3 numBlocks((int)ceil(N / (float)tileWidth), (int)ceil(N / (float)tileWidth));
+	MatMult <<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N, tileWidth);
 	cudaEventRecord(end);
 	cudaEventSynchronize(end);
 	cudaEventElapsedTime(&time, start, end);
 	cudaEventDestroy(start);
 	cudaEventDestroy(end);
-	printf("Transfer to device time: %f\n", time);
-
-	//KERNEL CALL
-	//Each thread produces 1 output matrix element
-	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
-	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
-	MatMult <<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N, tileWidth);
+	printf("Kernel matrix multiplication time: %f\n", time);
 
 	//Copy result from device memory to host memory
-	time = 0;
-	cudaEventCreate(&start);
-	cudaEventCreate(&end);
-	cudaEventRecord(start);
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
-	cudaEventRecord(end);
-	cudaEventSynchronize(end);
-	cudaEventElapsedTime(&time, start, end);
-	cudaEventDestroy(start);
-	cudaEventDestroy(end);
-	printf("Transfer to host time: %f\n", time);
 
 	//Compute matrix multiplication using the CPU
 	myMat *CTemp;
