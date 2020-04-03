@@ -4,9 +4,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-// thread block size
-#define BLOCKDIM 16
-
 // threshold
 #define TOLERANCE 0.01
 float absf(float n);
@@ -28,26 +25,79 @@ __global__ void MatMult(float *a, float *b, float *c, int N) {
 
 typedef float myMat[];
 
-void HostFunction(myMat* A, myMat* B, myMat* C, int N);
+void HostFunction(myMat* A, myMat* B, myMat* C, int N, int BlockSize);
 
 size_t dsize;
 
 int main() {
 	myMat *A, *B, *C;					
 
+	printf("PART 2 - DIMS 100, 200, 500, 1500\n");
+	int BlockSizes[5] = { 2, 4, 10, 20, 25 };
 	int Nsizes[5] = { 100, 200, 500, 1500, 5000 };
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 4; i++) {
 		int N = Nsizes[i];
 		dsize = N*N*sizeof(float);
 		A = (myMat*)malloc(dsize);
 		B = (myMat*)malloc(dsize);
 		C = (myMat*)malloc(dsize);
 		printf("N = %d\n", N);
-		HostFunction(A, B, C, N);
+		HostFunction(A, B, C, N, 16);
 		printf("\n");
 		free(A);
 		free(B);
 		free(C);
+	}
+
+	printf("PART 3 - DIMS 100, 200, 500, 1500\n");
+	for (int j = 0; j < 5; j++) {
+		int BlockSize = BlockSizes[j];
+		printf("BlockSize = %d\n", BlockSize);
+		for (int i = 0; i < 4; i++) {
+			int N = Nsizes[i];
+			dsize = N*N*sizeof(float);
+			A = (myMat*)malloc(dsize);
+			B = (myMat*)malloc(dsize);
+			C = (myMat*)malloc(dsize);
+			printf("N = %d\n", N);
+			HostFunction(A, B, C, N, BlockSize);
+			printf("\n");
+			free(A);
+			free(B);
+			free(C);
+		}
+	}
+
+	for (int i = 4; i < 5; i++) {
+		printf("PART 2 - 5000\n");
+		int N = Nsizes[i];
+		dsize = N*N*sizeof(float);
+		A = (myMat*)malloc(dsize);
+		B = (myMat*)malloc(dsize);
+		C = (myMat*)malloc(dsize);
+		printf("N = %d\n", N);
+		HostFunction(A, B, C, N, 16);
+		printf("\n");
+		free(A);
+		free(B);
+		free(C);
+
+		printf("PART 3 - 5000\n");
+		for (int j = 0; j < 5; j++) {
+			int BlockSize = BlockSizes[j];
+			int N = Nsizes[i];
+			dsize = N*N*sizeof(float);
+			A = (myMat*)malloc(dsize);
+			B = (myMat*)malloc(dsize);
+			C = (myMat*)malloc(dsize);
+			printf("BlockSize = %d\n", BlockSize);
+			printf("N = %d\n", N);
+			HostFunction(A, B, C, N, BlockSize);
+			printf("\n");
+			free(A);
+			free(B);
+			free(C);
+		}
 	}
 
 	getc(stdin);
@@ -55,7 +105,7 @@ int main() {
 	return 0;
 }
 
-void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
+void HostFunction(myMat* A, myMat* B, myMat* C, int N, int BlockSize) {
 	//Initialize matricies
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
@@ -91,18 +141,22 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	//Copy matrices from host memory to device memory
 	float time = 0;
 	cudaEvent_t start, end;
-	cudaEventCreate(&start);
-	cudaEventCreate(&end);
-	cudaEventRecord(start);
+	if (BlockSize == 16) {
+		cudaEventCreate(&start);
+		cudaEventCreate(&end);
+		cudaEventRecord(start);
+	}
 	cudaMemcpy(pA, A, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(pB, B, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(pC, C, (N*N)*sizeof(float), cudaMemcpyHostToDevice);
-	cudaEventRecord(end);
-	cudaEventSynchronize(end);
-	cudaEventElapsedTime(&time, start, end);
-	cudaEventDestroy(start);
-	cudaEventDestroy(end);
-	printf("Transfer to device time: %f\n", time);
+	if (BlockSize == 16) {
+		cudaEventRecord(end);
+		cudaEventSynchronize(end);
+		cudaEventElapsedTime(&time, start, end);
+		cudaEventDestroy(start);
+		cudaEventDestroy(end);
+		printf("Transfer to device time: %f\n", time);
+	}
 
 	//KERNEL CALL
 	//Each thread produces 1 output matrix element
@@ -110,7 +164,7 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	cudaEventCreate(&start);
 	cudaEventCreate(&end);
 	cudaEventRecord(start);
-	dim3 threadsPerBlock(BLOCKDIM, BLOCKDIM);
+	dim3 threadsPerBlock(BlockSize, BlockSize);
 	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
 	MatMult<<<numBlocks, threadsPerBlock>>>(pA, pB, pC, N);
 	cudaEventRecord(end);
@@ -121,17 +175,21 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N) {
 	printf("Kernal function time: %f\n", time);
 
 	//Copy result from device memory to host memory
-	time = 0;
-	cudaEventCreate(&start);
-	cudaEventCreate(&end);
-	cudaEventRecord(start);
+	if (BlockSize == 16) {
+		time = 0;
+		cudaEventCreate(&start);
+		cudaEventCreate(&end);
+		cudaEventRecord(start);
+	}
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
-	cudaEventRecord(end);
-	cudaEventSynchronize(end);
-	cudaEventElapsedTime(&time, start, end);
-	cudaEventDestroy(start);
-	cudaEventDestroy(end);
-	printf("Transfer to host time: %f\n", time);
+	if (BlockSize == 16) {
+		cudaEventRecord(end);
+		cudaEventSynchronize(end);
+		cudaEventElapsedTime(&time, start, end);
+		cudaEventDestroy(start);
+		cudaEventDestroy(end);
+		printf("Transfer to host time: %f\n", time);
+	}
 
 	//Compute matrix multiplication using the CPU
 	myMat *CTemp;
