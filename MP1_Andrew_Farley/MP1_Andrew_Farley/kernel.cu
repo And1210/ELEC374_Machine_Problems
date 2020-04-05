@@ -32,7 +32,9 @@ int main() {
 		printf("\tX: %d, Y: %d, Z: %d\n", dp.maxGridSize[0], dp.maxGridSize[1], dp.maxGridSize[2]);
 	}
 
+	getc(stdin);
 
+	return 0;
 }
 
 //Obtained from https://stackoverflow.com/questions/32530604/how-can-i-get-number-of-cores-in-cuda-device

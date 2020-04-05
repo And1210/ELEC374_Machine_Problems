@@ -119,6 +119,10 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N, void (*addHandler)(float*
 	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
 
 	//Use the CPU to compute addition
+	time = 0;
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+	cudaEventRecord(start);
 	myMat *CTemp;
 	CTemp = (myMat*)malloc(dsize);
 	for (int i = 0; i < N; i++) {
@@ -127,6 +131,13 @@ void HostFunction(myMat* A, myMat* B, myMat* C, int N, void (*addHandler)(float*
 			(*CTemp)[index] = (*A)[index] + (*B)[index];
 		}
 	}
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+	printf("CPU time: %f\n", time);
+
 
 	//Check GPU computed against CPU computed
 	int good = 1;
